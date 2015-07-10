@@ -1,0 +1,409 @@
+<!DOCTYPE HTML>
+<html>
+
+<head>
+	<meta charset="UTF-8">
+	<title>Google Fit Visualizer</title>
+	<link rel="stylesheet" href="css/pikaday.css">
+	<link rel="stylesheet" href="css/site.css">
+	
+	<script src="pikaday.js"></script>
+	<script src="https://code.jquery.com/jquery-1.11.3.min.js"></script>
+	<script src="https://apis.google.com/js/client.js"></script>
+
+	<script src="http://code.highcharts.com/stock/highstock.js"></script>
+	<script src="http://code.highcharts.com/stock/modules/exporting.js"></script>
+
+	<script>
+		var startpicker, endpicker;
+
+		$(function() {
+		
+		});
+		
+		function auth() {
+			var config = {
+				'client_id': '792188883119-c2kkr782d86il2qvq5pkaovoi7hmddvq.apps.googleusercontent.com',
+				'scope': ' https://www.googleapis.com/auth/fitness.activity.read'
+			};
+			gapi.auth.authorize(config, function() {
+				//console.log('login complete');
+				//console.log(gapi.auth.getToken());
+				document.getElementById("authorized").style.display = "inline";
+			});
+		}
+
+		function makeApiCall() {
+			var sDate = startpicker.getDate();
+			var eDate = endpicker.getDate();
+			if (!sDate || !eDate) {
+				//alert("Select a date range before clicking Get Data");
+				document.getElementById("dateerror").style.display = "inline";
+				return;
+			} else {
+				document.getElementById("dateerror").style.display = "none";
+			}
+			gapi.client.load('fitness', 'v1').then(function() {
+				
+				var context = {
+					startDate: sDate,
+					endDate: eDate,
+					chartType: 'column',
+					valueIndex: 0,
+					valueName: 'intVal',
+					chart: createStepChart()
+				};
+				
+				getDataSources('com.google.step_count.delta', context);
+				
+				context = {
+					startDate: sDate,
+					endDate: eDate,
+					chartType: 'line',
+					valueIndex: 0,
+					valueName: 'fpVal',
+					chart: createBPMChart(),
+					singleSeries: true
+				};
+				getDataSources('com.google.heart_rate.bpm', context);
+				context = {
+					startDate: sDate,
+					endDate: eDate,
+					chartType: 'line',
+					valueIndex: 0,
+					valueName: 'fpVal',
+					chart: createWeightChart(),
+					singleSeries: true,
+					valueFunction: function(value) {
+						return value * 2.20462262;
+					}
+				};
+				getDataSources('com.google.weight', context);
+				
+			});
+		}
+
+		function getDataSources(name, options) {
+			
+			
+			var stepRequest = gapi.client.fitness.users.dataSources.list({
+				'userId': 'me',
+				'dataTypeName': name
+			});
+			
+			stepRequest.then(dataSourceCallback, handleErrors, options);
+		}
+		
+		function dataSourceCallback(resp) {
+		
+			var sDate = this.startDate;
+			var eDate = this.endDate;
+			
+			var chart = this.chart;
+				
+			for (index in resp.result.dataSource) {
+				ds = resp.result.dataSource[index];
+				
+				if (ds.type == "raw") {
+				
+					var request = gapi.client.fitness.users.dataSources.datasets.get({
+						'userId': 'me',
+						'dataSourceId': ds.dataStreamId,
+						'datasetId': sDate.getTime() + '000000-' + eDate.getTime() + '000000'
+					});
+					var context = { dataSet: ds };
+					context = $.extend(context, this);
+					request.then(dataPointCallback, handleErrors, context);
+				}
+			}
+		}
+		function isFunction(functionToCheck) {
+			var getType = {};
+			return functionToCheck && getType.toString.call(functionToCheck) === '[object Function]';
+		}
+
+		function processResultDataPoints(resultPoints, valueIndex, valueName, valueFunction) {
+			var start, end, key, steps;
+			
+			var dataPoints = [];
+			for (index in resultPoints) {
+				point = resultPoints[index];
+				start = point["startTimeNanos"];
+				end = point["endTimeNanos"];
+				//console.log(point);
+				steps = point["value"][valueIndex][valueName];
+				if (isFunction(valueFunction))
+					steps = valueFunction(steps);
+				
+				//start = new Date(parseInt(start.substr(0, start.length - 6)));
+				end = parseInt(end.substr(0,end.length-6));
+				
+				dataPoints.push([end, steps]);
+			}
+			return dataPoints;
+		}
+		
+		
+		function dataPointCallback(steps_resp) {
+			
+			var dataPoints = processResultDataPoints(steps_resp.result.point, this.valueIndex,
+				this.valueName, this.valueFunction);
+			
+			if(this.singleSeries) {
+				if (this.chart.series.length == 0) {
+					this.chart.addSeries({
+						//name: this.dataSet.application.name || this.dataSet.application.packageName,
+						type: this.chartType,
+						data: dataPoints,
+					});
+				}
+				for ( index in dataPoints) {
+					this.chart.series[0].addPoint(dataPoints[index], false);
+				}
+				this.chart.redraw();
+			} else {
+				if (dataPoints.length > 0) {
+					this.chart.addSeries({
+						name: this.dataSet.application.name || this.dataSet.application.packageName,
+						type: this.chartType,
+						data: dataPoints,
+					});
+				}
+			}
+		}
+		
+		function handleErrors(reason) {
+			console.log('Error:');
+			console.log(reason);
+			document.getElementById("output").style.display = "inline";
+			output = document.getElementById('output').textContent = "Error: " + reason.result.error.message
+		}
+		
+		function getDefaultChartOptions() {
+			return {
+				global: {
+					useUTC: false
+				},
+				chart: {
+					type: 'spline'
+				},
+
+				xAxis: {
+					type: 'datetime',
+					title: {
+						text: 'Date'
+					},
+					ordinal: false
+				},
+
+				plotOptions: {
+					series: {
+						dataGrouping: {
+							groupPixelWidth: 5,
+							units: [
+								['hour', [1, 2, 3, 4, 6]],
+								['day', [1]],
+								['week', [1]],
+								['month', [1, 3, 6]],
+								['year', null]
+							]
+						}
+					}
+				},
+
+				tooltip: {
+					pointFormat: '<span style="color:{series.color}">{series.name}</span>: <b>{point.y}</b><br/>',
+					valueDecimals: 0
+				},
+				legend: {
+					//layout: 'vertical',
+					//align: 'right',
+					//verticalAlign: 'middle',
+					//borderWidth: 0,
+					enabled: true
+				},
+
+				series: []
+			};
+		}
+
+		function createStepChart() {
+
+			var options = {
+				chart: {
+					renderTo: 'step_container',
+					type: 'column'
+				},
+
+				plotOptions: {
+					series: {
+						dataGrouping: {
+							approximation: 'sum',
+							groupPixelWidth: 5
+						}
+					}
+				},
+
+				series: []
+			};
+			options = $.extend(true, {}, getDefaultChartOptions(), options);
+			var chart = new Highcharts.StockChart(options);
+			return chart;
+		};
+		
+
+		function createBPMChart() {
+
+			var options = {
+				chart: {
+					renderTo: 'bpm_container'
+				},
+
+				plotOptions: {
+					series: {
+						lineWidth : 0,
+						marker : {
+							enabled : true,
+							radius : 2
+						},
+						dataGrouping: {
+							groupPixelWidth: 5,
+						}
+					}
+				},
+
+				series: []
+			};
+			options = $.extend(true, {}, getDefaultChartOptions(), options);
+			var chart = new Highcharts.StockChart(options);
+			return chart;
+		};
+		
+		function createWeightChart() {
+
+			var options = {
+				chart: {
+					renderTo: 'weight_container'
+				},
+
+				plotOptions: {
+					series: {
+						//lineWidth : 0,
+						marker : {
+							enabled : true,
+							radius : 2
+						},
+						dataGrouping: {
+							groupPixelWidth: 5,
+						}
+					}
+				},
+
+				series: []
+			};
+			options = $.extend(true, {}, getDefaultChartOptions(), options);
+			var chart = new Highcharts.StockChart(options);
+			return chart;
+		};
+		
+	</script>
+</head>
+
+<body>
+	<h1>Google Fit Visualizer</h1>
+
+	<div class="step">
+		<strong>Step 1</strong>
+		<p>Authorize this page to access your Google fit data. Nothing is stored; so, you will have to click this button each time the page reloads.</p>
+		<button id="authorize-button" onclick="auth();">Authorize</button>
+		<p id="authorized" style="display:none;">Authorization successful.</p>
+	</div>
+
+	<div class="step">
+		<strong>Step 2</strong>
+		<p>Select a date range. If a large date range fails, try dividing it into a few shorter date ranges.</p>
+		Start:
+		<input type="text" id="startdate" class="datepicker" onload="new Pikaday({ field: this });"> End:
+		<input type="text" id="enddate" class="datepicker">
+		<button onclick="makeApiCall();">Get Data</button>
+		<p class="error" id="dateerror">Select a date range before clicking Get Data</p>
+	</div>
+
+	<div class="step">
+		<strong>Step 3</strong>
+		<p>Data will be added to the table below (after a short pause; be patient). </p>
+
+		<ul class="tabs">
+			<li><a href="#step_container">Step Count</a></li>
+			<li><a href="#bpm_container">Heart Rate (BPM)</a></li>
+			<li><a href="#weight_container">Weight</a></li>
+		</ul>
+		
+		<div id="step_container" class="chart"></div>
+		<div id="bpm_container" class="chart"></div>
+		<div id="weight_container" class="chart"></div>
+
+	</div>
+
+
+	<p>
+		Based on <a href="https://github.com/computermacgyver/on11_jsexporter">on11_jsexporter</a>
+		by <a href="https://github.com/computermacgyver">Scott Hale</a>.
+	</p>
+
+		<script>
+			$(function() {
+				//initialize the date picker
+				startpicker = new Pikaday({
+					field: document.getElementById('startdate')
+				});
+				endpicker = new Pikaday({
+					field: document.getElementById('enddate')
+				});
+				
+				$('ul.tabs').each(function(){
+					// For each set of tabs, we want to keep track of
+					// which tab is active and it's associated content
+					var $active, $content, $links = $(this).find('a');
+
+					// If the location.hash matches one of the links, use that as the active tab.
+					// If no match is found, use the first link as the initial active tab.
+					$active = $($links.filter('[href="'+location.hash+'"]')[0] || $links[0]);
+					$active.addClass('active');
+
+					$content = $($active[0].hash);
+
+					// Hide the remaining content
+					$links.not($active).each(function () {
+						$(this.hash).hide();
+					});
+
+					// Bind the click event handler
+					$(this).on('click', 'a', function(e){
+						// Make the old tab inactive.
+						$active.removeClass('active');
+						$content.hide();
+
+						// Update the variables with the new link and content
+						$active = $(this);
+						$content = $(this.hash);
+
+						// Make the tab active.
+						$active.addClass('active');
+						$content.show();
+						var chart = $content.highcharts();
+						if (typeof chart !== 'undefined') {
+							var height = chart.height
+							var width = $content.width()
+							chart.setSize(width, height);
+						}
+						// Prevent the anchor's default click action
+						e.preventDefault();
+					});
+				  });
+				
+			});
+		</script>
+</body>
+
+</html>
