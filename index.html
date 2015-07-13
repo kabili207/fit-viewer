@@ -59,7 +59,7 @@
 				context = {
 					startDate: sDate,
 					endDate: eDate,
-					chartType: 'line',
+					chartType: 'spline',
 					valueIndex: 0,
 					valueName: 'fpVal',
 					chart: createBPMChart(),
@@ -69,7 +69,7 @@
 				context = {
 					startDate: sDate,
 					endDate: eDate,
-					chartType: 'line',
+					chartType: 'spline',
 					valueIndex: 0,
 					valueName: 'fpVal',
 					chart: createWeightChart(),
@@ -268,7 +268,8 @@
 
 			var options = {
 				chart: {
-					renderTo: 'bpm_container'
+					renderTo: 'bpm_container',
+					type: 'spline'
 				},
 
 				plotOptions: {
@@ -295,7 +296,8 @@
 
 			var options = {
 				chart: {
-					renderTo: 'weight_container'
+					renderTo: 'weight_container',
+					type: 'spline'
 				},
 
 				plotOptions: {
