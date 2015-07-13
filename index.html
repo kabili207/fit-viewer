@@ -143,6 +143,18 @@
 			return dataPoints;
 		}
 		
+		function getDataSetName(dataSet) {
+			var str = dataSet.dataStreamName; 
+			var regex = /^derive_step_deltas<-\w+:[\w\.]+:[\w\.]+:(.+?):(.+?):/g
+			var n = regex.exec(str);
+			if (n && n.length > 2)
+				var name = n[1] + " " + n[2];
+			return name ||
+				dataSet.name ||
+				dataSet.dataStreamName ||
+				dataSet.application.name ||
+				dataSet.application.packageName;
+		}
 		
 		function dataPointCallback(steps_resp) {
 			
@@ -164,7 +176,7 @@
 			} else {
 				if (dataPoints.length > 0) {
 					this.chart.addSeries({
-						name: this.dataSet.application.name || this.dataSet.application.packageName,
+						name: getDataSetName(this.dataSet),
 						type: this.chartType,
 						data: dataPoints,
 					});
