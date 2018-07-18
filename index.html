@@ -63,7 +63,7 @@
 					valueIndex: 0,
 					valueName: 'fpVal',
 					chart: createBPMChart(),
-					singleSeries: true
+					singleSeries: false
 				};
 				getDataSources('com.google.heart_rate.bpm', context);
 				context = {
@@ -73,7 +73,7 @@
 					valueIndex: 0,
 					valueName: 'fpVal',
 					chart: createWeightChart(),
-					singleSeries: true,
+					singleSeries: false,
 					valueFunction: function(value) {
 						return value * 2.20462262;
 					}
